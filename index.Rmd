@@ -1,0 +1,117 @@
+---
+title: "542 Deliverable 2"
+output:
+  html_document:
+    df_print: paged
+---
+
+reading in the data
+```{r}
+location='https://github.com/542CompThink/Deliverable-2/raw/main/'
+file='542_data_set.csv/'
+link=paste0(location,file)
+
+energy=read.csv(link)
+```
+reset index
+```{r}
+row.names(energy)=NULL
+str(energy)
+```
+prepare data
+```{r}
+dataToCluster=energy[,-c(1,2,3)]
+row.names(dataToCluster)=energy$Country
+```
+compute the distance matrix
+```{r}
+set.seed(999)
+library(cluster)
+distanceMatrix=daisy(x=dataToCluster, metric = "gower")
+
+projectedData = cmdscale(distanceMatrix, k=2)
+energy$dim1 = projectedData[,1]
+energy$dim2 = projectedData[,2]
+
+energy[,c('dim1','dim2')][1:10,]
+```
+map
+```{r}
+library(ggplot2)
+base= ggplot(data=energy,
+             aes(x=dim1, y=dim2,
+                 label=Country)) 
+base + geom_text(size=2)
+```
+hierarchical cluster
+```{r}
+hc = hclust(distanceMatrix)
+plot(hc,hang = -1,cex=0.5)
+```
+compute clusters
+```{r}
+library(factoextra)
+
+fviz_nbclust(dataToCluster, 
+             hcut,
+             diss=distanceMatrix,
+             method = "gap_stat",
+             k.max = 10,
+             verbose = F,
+             hc_func = "agnes")
+```
+Using the aggregative method, I reject the optimal number suggested and use 8 instead. 
+```{r}
+NumberOfClusterDesired=8
+
+res.agnes= hcut(distanceMatrix, 
+                k = NumberOfClusterDesired,
+                isdiss=TRUE,
+                hc_func='agnes',
+                hc_method = "ward.D2")
+
+
+```
+result
+```{r}
+energy$agn = as.factor(res.agnes$cluster)
+
+aggregate(data=energy,
+          Airways~agn,
+          FUN=mean)
+```
+```{r}
+library(dplyr)
+
+energy$agn=dplyr::recode_factor(energy$agn, 
+                  `1`='1',`2` = '2',`4`='3',`3`='4',`6`='5',`5`='6',.ordered = T)
+```
+plot silhouette
+```{r}
+fviz_silhouette(res.agnes)
+```
+detecting cases wrongly clustered
+```{r}
+agnEval=data.frame(res.agnes$silinfo$widths)
+agnPoor=rownames(agnEval[agnEval$sil_width<0,])
+```
+```{r}
+library("qpcR")
+bad_Clus=as.data.frame(qpcR:::cbind.na(sort(agnPoor)))
+names(bad_Clus)=c("agn")
+bad_Clus
+```
+color the map
+```{r}
+base= ggplot(data=energy,
+             aes(x=dim1, y=dim2,
+                 label=Country)) 
+agnPlot=base + labs(title = "AGNES") + geom_point(size=2,
+                                              aes(color=agn),
+                                              show.legend = T) 
+```
+```{r}
+library(ggpubr)
+
+ggarrange(agnPlot,ncol = 1,common.legend = T)
+```
